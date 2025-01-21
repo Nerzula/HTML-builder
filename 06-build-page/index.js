@@ -1,6 +1,5 @@
-const fs = require('fs');
+const fs = require('fs/promises');
 const path = require('path');
-
 const projectDist = path.join(__dirname, 'project-dist');
 const templatePath = path.join(__dirname, 'template.html');
 const componentsPath = path.join(__dirname, 'components');
@@ -8,74 +7,91 @@ const stylesPath = path.join(__dirname, 'styles');
 const assetsPath = path.join(__dirname, 'assets');
 const distAssetsPath = path.join(projectDist, 'assets');
 
-function buildPage() {
+async function buildPage() {
 	try {
-		createFolder(projectDist);
+		await createFolder(projectDist);
 
-		buildHTML();
+		await buildHTML();
 
-		mergeStyles();
+		await mergeStyles();
 
-		copyAssets(assetsPath, distAssetsPath);
+		await copyAssets(assetsPath, distAssetsPath);
 
 		console.log('The page assembly is complete!');
 	} catch (err) {
-		console.error('Error when building the page:', err);
+		console.error('Error when building the page:', err.message);
 	}
 }
 
-function createFolder(folderPath) {
-	if (fs.existsSync(folderPath)) {
-		fs.rmSync(folderPath, { recursive: true, force: true });
+async function createFolder(folderPath) {
+	try {
+		await fs.rm(folderPath, { recursive: true, force: true });
+		await fs.mkdir(folderPath, { recursive: true });
+	} catch (err) {
+		throw new Error(`Couldn't create folder ${folderPath}: ${err.message}`);
 	}
-	fs.mkdirSync(folderPath, { recursive: true });
 }
 
-function buildHTML() {
-	let template = fs.readFileSync(templatePath, 'utf-8');
-	const components = fs.readdirSync(componentsPath);
+async function buildHTML() {
+	try {
+		let template = await fs.readFile(templatePath, 'utf-8');
+		const componentFiles = await fs.readdir(componentsPath);
 
-	components.forEach((file) => {
-		const ext = path.extname(file);
-		const name = path.basename(file, ext);
+		for (const file of componentFiles) {
+			const ext = path.extname(file);
+			const name = path.basename(file, ext);
 
-		if (ext === '.html') {
-			const componentContent = fs.readFileSync(path.join(componentsPath, file), 'utf-8');
-			template = template.replaceAll(`{{${name}}}`, componentContent);
+			if (ext === '.html') {
+				const componentContent = await fs.readFile(path.join(componentsPath, file), 'utf-8');
+				template = template.replaceAll(`{{${name}}}`, componentContent);
+			}
 		}
-	});
 
-	fs.writeFileSync(path.join(projectDist, 'index.html'), template, 'utf-8');
-}
-
-function mergeStyles() {
-	const styleFiles = fs.readdirSync(stylesPath);
-	const bundlePath = path.join(projectDist, 'style.css');
-
-	const styles = styleFiles
-		.filter((file) => path.extname(file) === '.css')
-		.map((file) => fs.readFileSync(path.join(stylesPath, file), 'utf-8'));
-
-	fs.writeFileSync(bundlePath, styles.join('\n'), 'utf-8');
-}
-
-function copyAssets(src, dest) {
-	if (!fs.existsSync(dest)) {
-		fs.mkdirSync(dest, { recursive: true });
+		await fs.writeFile(path.join(projectDist, 'index.html'), template, 'utf-8');
+	} catch (err) {
+		throw new Error(`Error when creating index.html ${err.message}`);
 	}
+}
 
-	const items = fs.readdirSync(src, { withFileTypes: true });
+async function mergeStyles() {
+	try {
+		const styleFiles = await fs.readdir(stylesPath);
+		const bundlePath = path.join(projectDist, 'style.css');
+		const writeStream = await fs.open(bundlePath, 'w');
 
-	items.forEach((item) => {
-		const srcPath = path.join(src, item.name);
-		const destPath = path.join(dest, item.name);
+		for (const file of styleFiles) {
+			const ext = path.extname(file);
 
-		if (item.isDirectory()) {
-			copyAssets(srcPath, destPath);
-		} else {
-			fs.copyFileSync(srcPath, destPath);
+			if (ext === '.css') {
+				const data = await fs.readFile(path.join(stylesPath, file), 'utf-8');
+				await writeStream.write(data + '\n');
+			}
 		}
-	});
+
+		await writeStream.close();
+	} catch (err) {
+		throw new Error(`Error when compiling styles: ${err.message}`);
+	}
+}
+
+async function copyAssets(src, dest) {
+	try {
+		await fs.mkdir(dest, { recursive: true });
+		const items = await fs.readdir(src, { withFileTypes: true });
+
+		for (const item of items) {
+			const srcPath = path.join(src, item.name);
+			const destPath = path.join(dest, item.name);
+
+			if (item.isDirectory()) {
+				await copyAssets(srcPath, destPath);
+			} else {
+				await fs.copyFile(srcPath, destPath);
+			}
+		}
+	} catch (err) {
+		throw new Error(`Error when copying assets ${err.message}`);
+	}
 }
 
 buildPage();

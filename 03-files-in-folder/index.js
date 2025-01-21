@@ -1,21 +1,27 @@
-const fs = require('fs');
+const fs = require('fs/promises');
 const path = require('path');
 
 const folder = path.join(__dirname, 'secret-folder');
-const files = fs.readdirSync(folder, { withFileTypes: true });
 
-files.forEach((item) => infoFile(item, folder));
+async function processFolder(currentFolder) {
+	try {
+		const items = await fs.readdir(currentFolder, { withFileTypes: true });
 
-function infoFile(item, currentFolder) {
-   const filePath = path.join(currentFolder, item.name);
+		for (const item of items) {
+			const filePath = path.join(currentFolder, item.name);
 
-   if (item.isFile()) {
-      const { name, ext } = path.parse(item.name);
-      const stat = fs.statSync(filePath);
-      const size = (stat.size / 1024).toFixed(2);
-      console.log(`${name} - ${ext.slice(1)} - ${size}kb`);
-   } else if (item.isDirectory()) {
-      const subFiles = fs.readdirSync(filePath, { withFileTypes: true });
-      subFiles.forEach((subItem) => infoFile(subItem, filePath));
-   }
+			if (item.isFile()) {
+				const { name, ext } = path.parse(item.name);
+				const stat = await fs.stat(filePath);
+				const size = (stat.size / 1024).toFixed(2);
+				console.log(`${name} - ${ext.slice(1)} - ${size}kb`);
+			} else if (item.isDirectory()) {
+				await processFolder(filePath);
+			}
+		}
+	} catch (err) {
+		console.error(`Folder processing error: ${currentFolder}. ${err.message}`);
+	}
 }
+
+processFolder(folder);

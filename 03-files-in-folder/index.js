@@ -8,19 +8,18 @@ async function processFolder(currentFolder) {
 		const items = await fs.readdir(currentFolder, { withFileTypes: true });
 
 		for (const item of items) {
-			const filePath = path.join(currentFolder, item.name);
-
 			if (item.isFile()) {
+				const filePath = path.join(currentFolder, item.name);
 				const { name, ext } = path.parse(item.name);
+
 				const stat = await fs.stat(filePath);
 				const size = (stat.size / 1024).toFixed(2);
+
 				console.log(`${name} - ${ext.slice(1)} - ${size}kb`);
-			} else if (item.isDirectory()) {
-				await processFolder(filePath);
 			}
 		}
 	} catch (err) {
-		console.error(`Folder processing error: ${currentFolder}. ${err.message}`);
+		console.error(`Error processing folder "${currentFolder}": ${err.message}`);
 	}
 }
 
